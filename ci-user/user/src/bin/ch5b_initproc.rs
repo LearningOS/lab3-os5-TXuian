@@ -8,11 +8,12 @@ use user_lib::{exec, fork, wait, yield_};
 
 #[no_mangle]
 fn main() -> i32 {
-    if fork() == 0 {
+    if fork() == 0 {  // child process of initproc, which is shell
         exec("ch5b_user_shell\0", &[0 as *const u8]);
-    } else {
+    } else {  // initproc, release zombie process
         loop {
             let mut exit_code: i32 = 0;
+            // waiting for a unreleased proc
             let pid = wait(&mut exit_code);
             if pid == -1 {
                 yield_();

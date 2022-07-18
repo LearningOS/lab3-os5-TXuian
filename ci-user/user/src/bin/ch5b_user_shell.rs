@@ -24,11 +24,12 @@ pub fn main() -> i32 {
     loop {
         let c = getchar();
         match c {
+            // means a "enter"
             LF | CR => {
                 print!("\n");
                 if !line.is_empty() {
-                    line.push('\0');
-                    let pid = fork();
+                    line.push('\0'); // manually add an "empty".
+                    let pid = fork(); // fork a child to exec proc.
                     if pid == 0 {
                         // child process
                         if exec(line.as_str(), &[0 as *const u8]) == -1 {
@@ -37,6 +38,7 @@ pub fn main() -> i32 {
                         }
                         unreachable!();
                     } else {
+                        // father(current shell) waiting to release child.
                         let mut exit_code: i32 = 0;
                         let exit_pid = waitpid(pid as usize, &mut exit_code);
                         assert_eq!(pid, exit_pid);
@@ -47,6 +49,7 @@ pub fn main() -> i32 {
                 print!(">> ");
                 flush();
             }
+            // "delete"
             BS | DL => {
                 if !line.is_empty() {
                     print!("{}", BS as char);
@@ -56,6 +59,7 @@ pub fn main() -> i32 {
                     line.pop();
                 }
             }
+            // anything else, we print it and add it to line.
             _ => {
                 print!("{}", c as char);
                 flush();

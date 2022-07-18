@@ -76,7 +76,6 @@ pub struct KernelStack {
 }
 
 impl KernelStack {
-    // alloc stack in kernel space
     pub fn new(pid_handle: &PidHandle) -> Self {
         let pid = pid_handle.0;
         let (kernel_stack_bottom, kernel_stack_top) = kernel_stack_position(pid);
@@ -106,7 +105,6 @@ impl KernelStack {
     }
 }
 
-// kernel stack removed when KernelStack destructs
 impl Drop for KernelStack {
     fn drop(&mut self) {
         let (kernel_stack_bottom, _) = kernel_stack_position(self.pid);
