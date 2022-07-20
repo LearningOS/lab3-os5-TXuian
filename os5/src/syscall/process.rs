@@ -215,59 +215,23 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
 // YOUR JOB: 实现 sys_spawn 系统调用
 // ALERT: 注意在实现 SPAWN 时不需要复制父进程地址空间，SPAWN != FORK + EXEC 
 pub fn sys_spawn(_path: *const u8) -> isize {
-    // reference to initproc
+    // parent of new task
+    let current_task = current_task().unwrap();
     // get complete file path
     let token = current_user_token();
     let path = translated_str(token, _path);
     if let Some(elf_data) = get_app_data_by_name(path.as_str()) {
-        // ***********
-        let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
-        let trap_cx_ppn = memory_set
-            .translate(VirtAddr::from(TRAP_CONTEXT).into())
-            .unwrap()
-            .ppn();
-        // alloc a pid and a kernel stack in kernel space
-        let pid_handle = pid_alloc();
-        let kernel_stack = KernelStack::new(&pid_handle);
-        let kernel_stack_top = kernel_stack.get_top();
-        // push a task context which goes to trap_return to the top of kernel stack
-        let new_task = Arc::new(TaskControlBlock {
-            pid: pid_handle,
-            kernel_stack,
-            inner: unsafe {
-                UPSafeCell::new(TaskControlBlockInner {
-                    trap_cx_ppn,
-                    base_size: user_sp,
-                    task_cx: TaskContext::goto_trap_return(kernel_stack_top),
-                    task_status: TaskStatus::Ready,
-                    memory_set,
-                    parent: None,
-                    children: Vec::new(),
-                    exit_code: 0,
-                    first_run_time: 0,
-                    current_time: 0,
-                    syscall_times: [0; MAX_SYSCALL_NUM],
-                    stride: max(2, BIG_STRIDE / 16),
-                    pass: 0,
-                })
-            },
-        });
-        // prepare TrapContext in user space
-        let trap_cx = new_task.inner_exclusive_access().get_trap_cx();
-        *trap_cx = TrapContext::app_init_context(
-            entry_point,
-            user_sp,
-            KERNEL_SPACE.exclusive_access().token(),
-            kernel_stack_top,
-            trap_handler as usize,
-        );
-        // ***********
-        // let new_task = Arc::new(TaskControlBlock::new(elf_data));
+        let new_task = Arc::new(TaskControlBlock::new(elf_data));
         // already set mem_set, task_control_block, and trap_cx in new
         let new_pid = new_task.getpid();
+        // set relationship
+        new_task.inner_exclusive_access().parent = Some(Arc::downgrade(&current_task));
+        current_task.inner_exclusive_access().children.push(new_task.clone());
         // set child return
-        (*trap_cx).x[10] = 0;
+        let trap_cx = new_task.inner_exclusive_access().get_trap_cx();
+        trap_cx.x[10] = 0;
         add_task(new_task);
+        // father return 
         new_pid as isize
     } else {
         -1

@@ -52,8 +52,8 @@ pub struct TaskControlBlockInner {
     /// It is set when active exit or execution error occurs
     pub exit_code: i32,
     // LAB 5
-    pub stride: usize,
-    pub pass: usize,
+    pub stride: u8,
+    pub pass: u8,
 }
 
 /// Simple access to its internal fields

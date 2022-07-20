@@ -11,7 +11,7 @@ use alloc::vec::{Vec};
 use lazy_static::*;
 
 pub struct TaskManager {
-    ready_set: BTreeMap<usize, Vec<Arc<TaskControlBlock>>>,
+    ready_set: BTreeMap<u8, Vec<Arc<TaskControlBlock>>>,
 }
 
 // YOUR JOB: FIFO->Stride

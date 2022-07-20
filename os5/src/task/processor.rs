@@ -129,7 +129,7 @@ pub fn set_current_task_priority(prio: isize) -> isize{
     let prio = max(1, prio);
     let processor = PROCESSOR.exclusive_access();
     if let Some(current_task) = processor.current() {
-        let stride = max(2, BIG_STRIDE / (prio as usize));
+        let stride = max(2, BIG_STRIDE / (prio as u8));
         current_task.inner_exclusive_access().stride = stride;
         return prio;
     }// skip when there is not task running
