@@ -22,18 +22,21 @@ use alloc::sync::Arc;
 use lazy_static::*;
 use manager::fetch_task;
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+pub use task::{TaskControlBlock, TaskStatus, TaskControlBlockInner};
 
 pub use context::TaskContext;
 pub use manager::add_task;
 pub use pid::{pid_alloc, KernelStack, PidHandle};
 pub use processor::{
     current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
+    set_current_task_running_time, set_current_task_syscall_times, current_task_info,
+    current_task_insert_mm, current_task_unmap_area, set_current_task_priority,
 };
 
 /// Make current task suspended and switch to the next task
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
+    // when using take_current, the current task in processor set to None.
     let task = take_current_task().unwrap();
 
     // ---- access current TCB exclusively
@@ -46,7 +49,7 @@ pub fn suspend_current_and_run_next() {
 
     // push back to ready queue.
     add_task(task);
-    // jump to scheduling cycle
+    // jump to scheduling cycle (return from current task to idle task)
     schedule(task_cx_ptr);
 }
 

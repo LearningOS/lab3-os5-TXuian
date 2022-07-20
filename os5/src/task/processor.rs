@@ -5,10 +5,16 @@
 //! and the replacement and transfer of control flow of different applications are executed.
 
 
+
+use core::cmp::max;
+
 use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
+use crate::config::{MAX_SYSCALL_NUM, BIG_STRIDE};
+use crate::mm::{VirtAddr, MapPermission};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_us;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -57,6 +63,16 @@ pub fn run_tasks() {
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
+            debug!("task with pass {:?} is running.", task_inner.pass);
+            // set running time
+            let current_time = get_time_us() / 1_000;
+            if task_inner.first_run_time == 0 {
+                task_inner.first_run_time = current_time;
+            }
+            task_inner.current_time = current_time;
+            // update pass
+            task_inner.pass += task_inner.stride;
+            // ****set running time done
             drop(task_inner);
             // release coming task TCB manually
             processor.current = Some(task);
@@ -92,6 +108,67 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
         .unwrap()
         .inner_exclusive_access()
         .get_trap_cx()
+}
+
+/// Set current time for current task
+pub fn set_current_task_running_time(current_time: usize) {
+    let processor = PROCESSOR.exclusive_access();
+    if let Some(current_task) = processor.current() {
+        current_task.inner_exclusive_access().current_time = current_time;
+    } // skip when there is not task running
+}
+
+pub fn set_current_task_syscall_times(syscall_id: usize) {
+    let processor = PROCESSOR.exclusive_access();
+    if let Some(current_task) = processor.current() {
+        current_task.inner_exclusive_access().syscall_times[syscall_id] += 1;
+    }// skip when there is not task running
+}
+
+pub fn set_current_task_priority(prio: isize) -> isize{
+    let prio = max(1, prio);
+    let processor = PROCESSOR.exclusive_access();
+    if let Some(current_task) = processor.current() {
+        let stride = max(2, BIG_STRIDE / (prio as usize));
+        current_task.inner_exclusive_access().stride = stride;
+        return prio;
+    }// skip when there is not task running
+    return -1;
+}
+
+pub fn current_task_info() -> Option<(TaskStatus, [u32; MAX_SYSCALL_NUM], usize)> {
+    let processor = PROCESSOR.exclusive_access();
+    match processor.current() {
+        Some(current_task) => {
+            let current_task_inner = current_task.inner_exclusive_access();
+            Some((
+                current_task_inner.task_status,
+                current_task_inner.syscall_times,
+                current_task_inner.current_time - current_task_inner.first_run_time
+            ))
+        },
+        None => None
+    }
+}
+
+pub fn current_task_insert_mm(start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
+    let processor = PROCESSOR.exclusive_access();
+    if let Some(current_task) = processor.current() {
+        let current_mset = 
+            &mut current_task.inner_exclusive_access()
+                .memory_set;
+        current_mset.insert_framed_area(start_va, end_va, permission)
+    }
+}
+
+pub fn current_task_unmap_area(start_va: VirtAddr, end_va: VirtAddr) {
+    let processor = PROCESSOR.exclusive_access();
+    if let Some(current_task) = processor.current() {
+        let current_mset = 
+            &mut current_task.inner_exclusive_access()
+                .memory_set;
+        current_mset.delete_framed_area(start_va, end_va)
+    }
 }
 
 /// Return to idle control flow for new scheduling

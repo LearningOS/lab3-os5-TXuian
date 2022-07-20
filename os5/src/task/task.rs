@@ -2,13 +2,14 @@
 
 use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT;
+use crate::config::{TRAP_CONTEXT, MAX_SYSCALL_NUM, BIG_STRIDE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use core::cmp::{Ordering, max};
 
 /// Task control block structure
 ///
@@ -20,7 +21,7 @@ pub struct TaskControlBlock {
     /// Kernel stack corresponding to PID
     pub kernel_stack: KernelStack,
     // mutable
-    inner: UPSafeCell<TaskControlBlockInner>,
+    pub(crate) inner: UPSafeCell<TaskControlBlockInner>,
 }
 
 /// Structure containing more process content
@@ -39,6 +40,10 @@ pub struct TaskControlBlockInner {
     pub task_status: TaskStatus,
     /// Application address space
     pub memory_set: MemorySet,
+    /// LAB1
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    pub first_run_time: usize,
+    pub current_time: usize,
     /// Parent process of the current process.
     /// Weak will not affect the reference count of the parent
     pub parent: Option<Weak<TaskControlBlock>>,
@@ -46,6 +51,9 @@ pub struct TaskControlBlockInner {
     pub children: Vec<Arc<TaskControlBlock>>,
     /// It is set when active exit or execution error occurs
     pub exit_code: i32,
+    // LAB 5
+    pub stride: usize,
+    pub pass: usize,
 }
 
 /// Simple access to its internal fields
@@ -103,6 +111,11 @@ impl TaskControlBlock {
                     parent: None,
                     children: Vec::new(),
                     exit_code: 0,
+                    first_run_time: 0,
+                    current_time: 0,
+                    syscall_times: [0; MAX_SYSCALL_NUM],
+                    stride: max(2, BIG_STRIDE / 16),
+                    pass: 0,
                 })
             },
         };
@@ -170,6 +183,11 @@ impl TaskControlBlock {
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
                     exit_code: 0,
+                    first_run_time: 0,
+                    current_time: 0,
+                    syscall_times: [0; MAX_SYSCALL_NUM],
+                    stride: max(2, BIG_STRIDE / 16),
+                    pass: 0,
                 })
             },
         });
@@ -189,11 +207,19 @@ impl TaskControlBlock {
     }
 }
 
+// impl Ord for TaskControlBlock {
+//     fn cmp(&self, other: &Self) -> Ordering {
+//         return other.inner_exclusive_access().pass
+//             .cmp(&self.inner_exclusive_access().pass);
+//     }
+// }
+
 #[derive(Copy, Clone, PartialEq)]
 /// task status: UnInit, Ready, Running, Exited
 pub enum TaskStatus {
     UnInit,
     Ready,
     Running,
+    Exited,
     Zombie,
 }

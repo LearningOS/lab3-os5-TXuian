@@ -3,15 +3,15 @@
 //! It is only used to manage processes and schedule process based on ready queue.
 //! Other CPU process monitoring functions are in Processor.
 
-
 use super::TaskControlBlock;
 use crate::sync::UPSafeCell;
-use alloc::collections::VecDeque;
+use alloc::collections::{VecDeque, BTreeSet, BTreeMap};
 use alloc::sync::Arc;
+use alloc::vec::{Vec};
 use lazy_static::*;
 
 pub struct TaskManager {
-    ready_queue: VecDeque<Arc<TaskControlBlock>>,
+    ready_set: BTreeMap<usize, Vec<Arc<TaskControlBlock>>>,
 }
 
 // YOUR JOB: FIFO->Stride
@@ -19,16 +19,35 @@ pub struct TaskManager {
 impl TaskManager {
     pub fn new() -> Self {
         Self {
-            ready_queue: VecDeque::new(),
+            ready_set: BTreeMap::new(),
         }
     }
     /// Add process back to ready queue
     pub fn add(&mut self, task: Arc<TaskControlBlock>) {
-        self.ready_queue.push_back(task);
+        let this_pass = task.inner_exclusive_access().pass;
+        match self.ready_set.get_mut(&this_pass) {
+            Some(tcb_vec) => {
+                tcb_vec.push(task);
+            },
+            None => {
+                self.ready_set.insert(this_pass, Vec::from([task]));
+            },
+        }
     }
     /// Take a process out of the ready queue
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
-        self.ready_queue.pop_front()
+        match self.ready_set.pop_first() {
+            Some((key, mut value)) => {
+                let task = value.pop();
+                if !value.is_empty() {
+                    self.ready_set.insert(key, value);
+                }
+                return task;
+            },
+            None => {
+                None
+            },
+        }
     }
 }
 

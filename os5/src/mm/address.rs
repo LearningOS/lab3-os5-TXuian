@@ -199,6 +199,9 @@ where
     pub fn get_end(&self) -> T {
         self.r
     }
+    pub fn covers(&self, x: T) -> bool {
+        return self.get_start() <= x && x <= self.get_end();
+    }
 }
 impl<T> IntoIterator for SimpleRange<T>
 where
